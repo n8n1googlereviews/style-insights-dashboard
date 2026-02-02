@@ -33,9 +33,11 @@ const getSentimentBadge = (sentiment) => {
 };
 
 const CustomerList = ({ reviews }) => {
-  const sortedReviews = [...reviews].sort((a, b) => 
-    new Date(b.timestamp) - new Date(a.timestamp)
-  );
+  const sortedReviews = [...reviews].sort((a, b) => {
+    const dateA = new Date(b.timestamp || b.created_at || 0);
+    const dateB = new Date(a.timestamp || a.created_at || 0);
+    return dateA - dateB;
+  });
 
   return (
     <div className="space-y-6">
@@ -79,31 +81,35 @@ const CustomerList = ({ reviews }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {sortedReviews.map((review) => (
-                  <tr key={review.review_id} className="hover:bg-secondary/30 transition-colors">
+                {sortedReviews.map((review, index) => (
+                  <tr key={review.review_id || review.id || index} className="hover:bg-secondary/30 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
                           <User className="w-4 h-4 text-muted-foreground" />
                         </div>
-                        <span className="font-medium text-foreground">{review.author_name}</span>
+                        <span className="font-medium text-foreground">{review.author_name || 'Anonymous'}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <StarRating rating={review.rating} />
+                      <StarRating rating={review.rating || 0} />
                     </td>
                     <td className="px-6 py-4 max-w-md">
                       <p className="text-sm text-muted-foreground line-clamp-2">
-                        {review.text}
+                        {review.review_text || review.text || 'No review text'}
                       </p>
                     </td>
                     <td className="px-6 py-4">
-                      {getSentimentBadge(review.sentiment)}
+                      {getSentimentBadge(review.sentiment || 'neutral')}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Calendar className="w-4 h-4" />
-                        <span>{format(new Date(review.timestamp), 'MMM d, yyyy')}</span>
+                        <span>
+                          {review.timestamp || review.created_at 
+                            ? format(new Date(review.timestamp || review.created_at), 'MMM d, yyyy')
+                            : 'N/A'}
+                        </span>
                       </div>
                     </td>
                   </tr>
