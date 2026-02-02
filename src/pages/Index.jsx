@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import StoreSelector from '../components/StoreSelector';
 import BrandHealth from '../components/BrandHealth';
@@ -8,39 +8,105 @@ import SizeFitChart from '../components/SizeFitChart';
 import StyleColorTrends from '../components/StyleColorTrends';
 import CustomerList from '../components/CustomerList';
 import Demographics from '../components/Demographics';
+import { fetchStores, fetchReviews } from '../lib/n8nApi';
 import {
-  stores,
-  getReviewsByStore,
   calculateBrandHealth,
   calculateSizeFit,
   extractProductFeedback,
   extractColorMentions,
   extractFabricFeedback,
-} from '../data/mockData';
+} from '../lib/analyticsUtils';
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState('health');
   const [selectedStore, setSelectedStore] = useState('all');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Live data state
+  const [stores, setStores] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Get filtered reviews based on selected store
-  const reviews = useMemo(() => getReviewsByStore(selectedStore), [selectedStore]);
+  // Fetch stores on initial load
+  useEffect(() => {
+    const loadStores = async () => {
+      try {
+        const storesData = await fetchStores();
+        setStores(Array.isArray(storesData) ? storesData : []);
+      } catch (err) {
+        console.error('Failed to fetch stores:', err);
+        setError('Failed to load stores. Please check your n8n configuration.');
+      }
+    };
 
-  // Calculate all metrics
+    loadStores();
+  }, []);
+
+  // Fetch reviews when selected store changes
+  const loadReviews = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const reviewsData = await fetchReviews(selectedStore);
+      setReviews(Array.isArray(reviewsData) ? reviewsData : []);
+    } catch (err) {
+      console.error('Failed to fetch reviews:', err);
+      setError('Failed to load reviews. Please check your n8n configuration.');
+      setReviews([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedStore]);
+
+  useEffect(() => {
+    loadReviews();
+  }, [loadReviews]);
+
+  // Calculate all metrics from live data
   const brandHealth = useMemo(() => calculateBrandHealth(reviews), [reviews]);
   const sizeFitData = useMemo(() => calculateSizeFit(reviews), [reviews]);
   const productFeedback = useMemo(() => extractProductFeedback(reviews), [reviews]);
   const colorMentions = useMemo(() => extractColorMentions(reviews), [reviews]);
   const fabricFeedback = useMemo(() => extractFabricFeedback(reviews), [reviews]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    // Simulate data refresh
-    setTimeout(() => setIsRefreshing(false), 1000);
+    await loadReviews();
+    setIsRefreshing(false);
+  };
+
+  const handleStoreChange = (storeId) => {
+    setSelectedStore(storeId);
   };
 
   const renderContent = () => {
+    if (error) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-medium text-foreground mb-2">Connection Error</h3>
+          <p className="text-muted-foreground max-w-md mb-4">{error}</p>
+          <button
+            onClick={handleRefresh}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity"
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+
+    if (isLoading) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw className="w-8 h-8 text-muted-foreground animate-spin" />
+        </div>
+      );
+    }
+
     switch (activeSection) {
       case 'health':
         return (
@@ -93,11 +159,11 @@ const Index = () => {
               <StoreSelector
                 stores={stores}
                 selectedStore={selectedStore}
-                onStoreChange={setSelectedStore}
+                onStoreChange={handleStoreChange}
               />
               <button
                 onClick={handleRefresh}
-                disabled={isRefreshing}
+                disabled={isRefreshing || isLoading}
                 className="p-2.5 rounded-lg border border-border bg-card hover:bg-secondary transition-colors disabled:opacity-50"
                 aria-label="Refresh data"
               >
@@ -120,7 +186,11 @@ const Index = () => {
             <p>© 2024 Luxe Fashion Analytics. All rights reserved.</p>
             <p>
               Data source: <span className="font-medium text-foreground">n8n Integration</span> •
-              <span className="ml-2">Last updated: Just now</span>
+              <span className="ml-2">
+                {stores.length > 0 
+                  ? `${stores.length} stores connected` 
+                  : 'Connecting...'}
+              </span>
             </p>
           </div>
         </footer>
